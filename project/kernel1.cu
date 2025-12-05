@@ -1,7 +1,7 @@
 #include "common.h"
 #include "timer.h"
 // Mikhail
-// Binary search through B
+// One thread per element of C, Linear search through row in B
 
 #define DEBUG 0
 
@@ -15,23 +15,15 @@ __global__ void bin_search_B_kernel(CSRMatrix* A, CSRMatrix* B, COOMatrix* C) {
             float valA = A->values[csrPtr];
             if(DEBUG) printf("(%d, %d, %d): value in A is %f\n", i, j, k, valA);
             // need to find B[k, j] using binary search
-            int bRowLeft = B->rowPtrs[k];
-            int bRowRight = B->rowPtrs[k+1]; // [)
-            if(DEBUG) printf("i = %d, j = %d, k = %d, bRowLeft = %d, bRowRight = %d, colIdxs[bRowLeft] = %d, colIdxs[bRowRight-1] = %d\n", i, j, k, bRowLeft, bRowRight, B->colIdxs[bRowLeft], B->colIdxs[bRowRight-1]);
-            while(bRowRight > bRowLeft + 1) {
-                int bRowMid = (bRowLeft + bRowRight) / 2;
-                int midColIdx = B->colIdxs[bRowMid];
-                if(midColIdx <= j) {
-                    bRowLeft = bRowMid;
-                }
-                else {
-                    bRowRight = bRowMid;
-                }
+            for(int bPtr = B->rowPtrs[k]; bPtr < B->rowPtrs[k+1]; bPtr++) {
+                if(B->colIdxs[bPtr] == j) {
+                if(DEBUG) printf("(%d, %d, %d): found matching column %d in B, the value there is %f, our A value is %f\n", i, j, k, j, B->values[bPtr], valA);
+                sum += B->values[bPtr] * valA;
             }
-            if(B->colIdxs[bRowLeft] == j) {
-                if(DEBUG) printf("(%d, %d, %d): found matching column %d in B, the value there is %f, our A value is %f\n", i, j, k, j, B->values[bRowLeft], valA);
-                sum += B->values[bRowLeft] * valA;
             }
+            
+            }
+            
         }
         if(sum != 0.) { 
             //append (i, j, sum) to C atomically
@@ -40,7 +32,6 @@ __global__ void bin_search_B_kernel(CSRMatrix* A, CSRMatrix* B, COOMatrix* C) {
             C->rowIdxs[insertIdx] = i;
             C->colIdxs[insertIdx] = j;
             C->values[insertIdx] = sum;
-        }
     }
 }
 
