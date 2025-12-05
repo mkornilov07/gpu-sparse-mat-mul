@@ -3,6 +3,8 @@
 // Mikhail
 // Binary search through B
 
+#define DEBUG 0
+
 __global__ void bin_search_B_kernel(CSRMatrix* A, CSRMatrix* B, COOMatrix* C) {
     float sum = 0.; // sum A[i][k] * B[k][j]
     int i = blockDim.x * blockIdx.x + threadIdx.x;
@@ -11,10 +13,11 @@ __global__ void bin_search_B_kernel(CSRMatrix* A, CSRMatrix* B, COOMatrix* C) {
         for(int csrPtr = A->rowPtrs[i]; csrPtr < A->rowPtrs[i+1]; csrPtr += 1) {
             int k = A->colIdxs[csrPtr];
             float valA = A->values[csrPtr];
+            if(DEBUG) printf("(%d, %d, %d): value in A is %f\n", i, j, k, valA);
             // need to find B[k, j] using binary search
             int bRowLeft = B->rowPtrs[k];
             int bRowRight = B->rowPtrs[k+1]; // [)
-            // printf("bRowLeft = %d, bRowRight = %d, colIdxs[bRowLeft] = %d, colIdxs[bRowRight-1] = %d\n", bRowLeft, bRowRight, B->colIdxs[bRowLeft], B->colIdxs[bRowRight-1]);
+            if(DEBUG) printf("i = %d, j = %d, k = %d, bRowLeft = %d, bRowRight = %d, colIdxs[bRowLeft] = %d, colIdxs[bRowRight-1] = %d\n", i, j, k, bRowLeft, bRowRight, B->colIdxs[bRowLeft], B->colIdxs[bRowRight-1]);
             while(bRowRight > bRowLeft + 1) {
                 int bRowMid = (bRowLeft + bRowRight) / 2;
                 int midColIdx = B->colIdxs[bRowMid];
@@ -26,11 +29,13 @@ __global__ void bin_search_B_kernel(CSRMatrix* A, CSRMatrix* B, COOMatrix* C) {
                 }
             }
             if(B->colIdxs[bRowLeft] == j) {
+                if(DEBUG) printf("(%d, %d, %d): found matching column %d in B, the value there is %f, our A value is %f\n", i, j, k, j, B->values[bRowLeft], valA);
                 sum += B->values[bRowLeft] * valA;
             }
         }
         if(sum != 0.) { 
             //append (i, j, sum) to C atomically
+            if(DEBUG) printf("(%d, %d): writing sum %f\n", i, j, sum);
             int insertIdx = atomicAdd(&(C->numNonzeros), 1);
             C->rowIdxs[insertIdx] = i;
             C->colIdxs[insertIdx] = j;
