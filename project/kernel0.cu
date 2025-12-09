@@ -1,71 +1,61 @@
-
 #include "common.h"
 #include "timer.h"
 
+/*
+ * Baseline parallel implementation of SpMSpM.
+ * One thread assigned to each row of A.
+ * 
+ * AB = C, where 
+ * A, B, C are N-by-N,
+ * A = B, and 
+ * C_ij = sum_k{ A_ik * B_kj }
+ */
+__global__ void spmspm_kernel0(
+		const CSRMatrix* A, 
+		const CSRMatrix* B, 
+		COOMatrix* C, 
+		float* fullyConstructedCMatrix) {
+    	unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-#include "common.h"
-#include "timer.h"
-__global__
-void spmspm_kernel0(const CSRMatrix* A, const CSRMatrix* B, 
-                    COOMatrix* C, float* array) {
+    	unsigned int N = A->numRows;
 
-    // find which row to work in
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    	if (i >= N) return;
 
-    // check boundary condition
-    if (row >= A->numRows) return;
+    	float* fullyConstructedCRow = &fullyConstructedCMatrix[i * N];
 
-    // array to accumulate vals for each col value in row
-    float* valArray = &array[row * B->numCols];
+    	for (unsigned int kPtr = A->rowPtrs[i]; kPtr < A->rowPtrs[i + 1]; ++kPtr) {
+        	unsigned int k = A->colIdxs[kPtr];
 
-    // initializing array
-    for (int j = 0; j < B->numCols; j++)
-        valArray[j] = 0.0f;
-
-    // get start and end indices for cols
-    int aStart = A->rowPtrs[row];
-    int aEnd = A->rowPtrs[row + 1];
-
-    for (int i = aStart; i < aEnd; i++) {
-        int col_a = A->colIdxs[i];
-        float aVal = A->values[i];
-
-        // use col_a as rows of b
-        int bStart = B->rowPtrs[col_a];
-        int bEnd   = B->rowPtrs[col_a+1];
-
-        for (int k = bStart; k < bEnd; k++) {
-            int col_b = B->colIdxs[k];
-            float bVal = B->values[k];
+        	for (unsigned int jPtr = B->rowPtrs[k]; jPtr < B->rowPtrs[k + 1]; ++jPtr) {
+            		unsigned int j = B->colIdxs[jPtr];
                     
-            // accumulate dot product of A(i, j) * B(J, k) into valArray[k]
-            valArray[col_b] += aVal * bVal;
-        }
-    }
+            		// Accumulate dot products
+            		fullyConstructedCRow[j] += A->values[kPtr] * B->values[jPtr];
+        	}
+    	}
 
-     // write non zero valuees to COO matrix C
-    for (int j = 0; j < B->numCols; j++) {
-        float v = valArray[j];
-        if (v != 0.0f) {
-            int pos = atomicAdd(&C->numNonzeros, 1);
-            C->rowIdxs[pos] = row;
-            C->colIdxs[pos] = j;
-            C->values[pos] = v;
-        }
-    }
+    	// Write nonzero dot products to COOMatrix C
+    	// Assumes all matrix elements in A and B are 
+	// nonnegative (as is in the CPU implementation)
+    	for (unsigned int j = 0; j < N; ++j) {
+        	float dotProduct = fullyConstructedCRow[j];
+        	if (dotProduct != 0) {
+            		unsigned int pos = atomicAdd(&C->numNonzeros, 1u);
+            		C->rowIdxs[pos] = i;
+            		C->colIdxs[pos] = j;
+            		C->values[pos] = dotProduct;
+        	}
+    	}
 }
 
 void spmspm_gpu0(CSRMatrix* csrMatrix1, CSRMatrix* csrMatrix2, CSRMatrix* csrMatrix1_d, CSRMatrix* csrMatrix2_d, COOMatrix* cooMatrix_d) {
-    
-    int numThreads = 128;
-    int numBlocks = (csrMatrix1->numRows + numThreads - 1) / numThreads;
-    float* array_d;
-    cudaMalloc(&array_d, sizeof(float) * csrMatrix1->numRows * csrMatrix2->numCols);
-    cudaMemset(array_d, 0, sizeof(float) * csrMatrix1->numRows * csrMatrix2->numCols);
-
-    spmspm_kernel0<<<numBlocks, numThreads>>>(csrMatrix1_d, csrMatrix2_d, cooMatrix_d, array_d);
-    cudaDeviceSynchronize();
-
+    	unsigned int threadsPerBlock = 128;
+    	unsigned int N = csrMatrix1->numRows;
+	unsigned int numBlocks = (N + threadsPerBlock - 1) / threadsPerBlock;
+    	float* fullyConstructedCMatrix_d;
+    	cudaMalloc(&fullyConstructedCMatrix_d, sizeof(float) * N * N);
+    	cudaMemset(fullyConstructedCMatrix_d, 0, sizeof(float) * N * N);
+    	spmspm_kernel0<<<numBlocks, threadsPerBlock>>>(csrMatrix1_d, csrMatrix2_d, cooMatrix_d, fullyConstructedCMatrix_d);
 }
 
 
