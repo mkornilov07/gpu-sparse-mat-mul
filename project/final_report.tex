@@ -1,0 +1,27 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{amssymb}
+
+\title{CS 4444 Final Project Report}
+
+\author{Daniel Lee (vjw9xf) \and () \and ()}
+
+\date{December 2025}
+
+\begin{document}
+
+\maketitle
+
+\section*{Baseline Parallel Implementation}
+For $AB = C$, where $A,B,C \in \mathbb{R}^{N \times N}$, $A = B$, $A_{ij} > 0\forall i,j \in [1,N]$, $A$ and $B$ are sparse matrices given in CSR format, and $C$ is in COO format:
+
+\section*{Failed Optimizations}
+
+\subsection*{Privatization (slower)}
+\begin{itemize}
+    \item Shared memory available per block on an Nvidia RTX A4000 (gpusrv[01-03,04-08]): 49152 bytes
+    \item Precalculating \# of nonzeros and atomically adding that to C->numNonzeros results in worse performance (+10ms)
+\end{itemize}
+
+\end{document}
+
