@@ -37,9 +37,20 @@ __global__ void spmspm_kernel3(
     	for (unsigned int jPtr = B->rowPtrs[k]; jPtr < B->rowPtrs[k + 1]; ++jPtr) {
         	unsigned int j = B->colIdxs[jPtr];
 
-		//unsigned int matchingThreads = __match_any_sync(__activemask(), j);
-		//float partialDotProduct = A->values[kPtr] * B->values[jPtr];
-		//float partialDotProduct = __reduce_add_sync(matchingThreads, elementProduct);
+		unsigned int matchingThreads = __match_any_sync(__activemask(), j);
+		float partialDotProduct = A->values[kPtr] * B->values[jPtr];
+		if (lane == __reduce_min_sync(matchingThreads, lane)) {
+			unsigned int counterMask = matchingThreads ^ (1u << (__builtin_ffs(matchingThreads) - 1));
+			int srcLane = __builtin_ffs(counterMask) - 1;
+			while (srcLane > 0) {
+				partialDotProduct += __shfl_sync(matchingThreads, partialDotProduct, srcLane);
+				counterMask ^= 1u << srcLane;
+				srcLane = __builtin_ffs(counterMask) - 1;
+			}
+			fullyConstructedCRow[j] += partialDotProduct;
+		}
+		//for (int offset = 16; offset > 0; offset /= 2) partialDotProduct += __shfl_xor_sync(matchingThreads, partialDotProduct, offset);
+		//partialDotProduct = __reduce_add_sync(matchingThreads, partialDotProduct);
 		//if (lane == __reduce_min_sync(matchingThreads, lane)) fullyConstructedCRow[j] += partialDotProduct;
 
         	//atomicAdd(&fullyConstructedCRow[j], A->values[kPtr] * B->values[jPtr]);

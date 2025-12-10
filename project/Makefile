@@ -8,10 +8,10 @@ EXE         = spmspm
 default: $(EXE)
 
 %.o: %.cu
-	$(NVCC) $(NVCC_FLAGS) -c -o $@ $<
+	$(NVCC) -arch=sm_86 $(NVCC_FLAGS) -c -o $@ $<
 
 $(EXE): $(OBJ)
-	$(NVCC) $(NVCC_FLAGS) $(OBJ) -o $(EXE)
+	$(NVCC) -arch=sm_86 $(NVCC_FLAGS) $(OBJ) -o $(EXE)
 
 clean:
 	rm -rf $(OBJ) $(EXE)
